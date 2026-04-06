@@ -4,9 +4,9 @@ A Python-based Rock Paper Scissors game with real-time hand gesture detection us
 
 ## Features
 
-✊ **Rock** - Make a closed fist  
-✋ **Paper** - Open your hand with all fingers extended  
-✌️ **Scissors** - Two fingers extended (index and middle)  
+**Rock** - Make a closed fist
+**Paper** - Open your hand with all fingers extended
+**Scissors** - Two fingers extended (index and middle)
 
 - Real-time hand detection via webcam
 - Live gesture classification
@@ -25,11 +25,13 @@ python3 -m venv venv
 Activate the virtual environment:
 
 **On Linux/Mac:**
+
 ```bash
 source venv/bin/activate
 ```
 
 **On Windows:**
+
 ```bash
 venv\Scripts\activate
 ```
@@ -61,9 +63,9 @@ python game.py
 1. Run `python game.py`
 2. Allow camera access
 3. Make a hand gesture:
-   - **✊ ROCK**: Close your hand into a fist
-   - **✋ PAPER**: Open your hand with all fingers spread
-   - **✌️ SCISSORS**: Show two fingers (index and middle)
+   - **ROCK**: Close your hand into a fist
+   - **PAPER**: Open your hand with all fingers spread
+   - **SCISSORS**: Show two fingers (index and middle)
 4. Press **SPACE** to throw when you see your gesture detected
 5. The game will show the countdown and result
 6. Press **SPACE** again after seeing the result to continue to the next round
@@ -78,17 +80,20 @@ python game.py
 ## Troubleshooting
 
 ### Camera not detected
+
 - Make sure no other app is using your camera
 - Check camera permissions on your system
 - Try a different USB camera if available
 
 ### Gesture not detecting correctly
+
 - Make sure your hand is clearly visible
 - Try moving closer to the camera
 - Ensure good lighting conditions
 - Hold gestures steadily for detection
 
 ### Performance issues
+
 - Close other applications to free up resources
 - Reduce brightness/contrast settings if needed
 

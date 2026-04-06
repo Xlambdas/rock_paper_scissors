@@ -1,35 +1,54 @@
 import cv2
 import mediapipe as mp
+from mediapipe.tasks.python import vision
 import random
 import time
 import numpy as np
+from pathlib import Path
+
 
 class RockPaperScissorsGame:
     def __init__(self):
-        # Initialize MediaPipe
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
-            static_image_mode=False,
-            max_num_hands=1,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.5
-        )
-        self.mp_drawing = mp.solutions.drawing_utils
+        try:
+            BaseOptions = mp.tasks.BaseOptions
+            HandLandmarker = vision.HandLandmarker
+            HandLandmarkerOptions = vision.HandLandmarkerOptions
+            VisionRunningMode = vision.RunningMode
 
-        # Game variables
+            model_path = Path(__file__).resolve().parent / "hand_landmarker.task"
+            if not model_path.exists():
+                raise FileNotFoundError(
+                    f"Model file not found: {model_path}\n"
+                    f"Download the MediaPipe hand landmarker .task model and place it next to game.py"
+                )
+
+            options = HandLandmarkerOptions(
+                base_options=BaseOptions(model_asset_path=str(model_path)),
+                running_mode=VisionRunningMode.VIDEO,
+                num_hands=1,
+                min_hand_detection_confidence=0.7,
+                min_hand_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+
+            self.hand_landmarker = HandLandmarker.create_from_options(options)
+            print("MediaPipe HandLandmarker initialized successfully")
+
+        except Exception as e:
+            print(f"Error initializing MediaPipe: {e}")
+            raise
+
         self.choices = ['rock', 'paper', 'scissors']
         self.player_score = 0
         self.computer_score = 0
         self.draw_score = 0
         self.round_number = 1
 
-        # Camera setup
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-        # Game state
-        self.game_state = 'detecting'  # detecting, countdown, result, round_end
+        self.game_state = 'detecting'
         self.detected_gesture = None
         self.player_choice = None
         self.computer_choice = None
@@ -37,63 +56,65 @@ class RockPaperScissorsGame:
         self.countdown = 0
         self.countdown_start_time = 0
         self.result_start_time = 0
+        self.frame_count = 0
+        self.start_time = time.time()
 
     def classify_gesture(self, hand_landmarks):
         """Classify hand gesture based on landmarks"""
-        if not hand_landmarks:
+        if not hand_landmarks or len(hand_landmarks) == 0:
             return None
 
-        lm = hand_landmarks.landmark
+        try:
+            # First detected hand
+            lm = hand_landmarks[0]
 
-        # Get key positions
-        thumb_tip = lm[4]
-        index_tip = lm[8]
-        middle_tip = lm[12]
-        ring_tip = lm[16]
-        pinky_tip = lm[20]
+            if not lm or len(lm) < 21:
+                return None
 
-        # Get PIP (middle joint) positions
-        index_pip = lm[6]
-        middle_pip = lm[10]
-        ring_pip = lm[14]
-        pinky_pip = lm[18]
-        thumb_pip = lm[3]
+            thumb_tip = lm[4]
+            index_tip = lm[8]
+            middle_tip = lm[12]
+            ring_tip = lm[16]
+            pinky_tip = lm[20]
 
-        # Count extended fingers (tip above pip = extended)
-        extended_fingers = 0
-        if index_tip.y < index_pip.y:
-            extended_fingers += 1
-        if middle_tip.y < middle_pip.y:
-            extended_fingers += 1
-        if ring_tip.y < ring_pip.y:
-            extended_fingers += 1
-        if pinky_tip.y < pinky_pip.y:
-            extended_fingers += 1
+            index_pip = lm[6]
+            middle_pip = lm[10]
+            ring_pip = lm[14]
+            pinky_pip = lm[18]
 
-        # Check thumb (different axis)
-        thumb_extended = thumb_tip.x < thumb_pip.x
+            extended_fingers = 0
 
-        # Classify gesture
-        if extended_fingers == 0:
-            return 'rock'  # Closed fist
-        elif extended_fingers == 2:
-            # Check if it's scissors (index and middle extended, others not)
-            if (index_tip.y < index_pip.y and
-                middle_tip.y < middle_pip.y and
-                ring_tip.y > ring_pip.y and
-                pinky_tip.y > pinky_pip.y):
-                return 'scissors'
-        elif extended_fingers >= 3:
-            return 'paper'  # Most fingers extended
+            if index_tip.y < index_pip.y:
+                extended_fingers += 1
+            if middle_tip.y < middle_pip.y:
+                extended_fingers += 1
+            if ring_tip.y < ring_pip.y:
+                extended_fingers += 1
+            if pinky_tip.y < pinky_pip.y:
+                extended_fingers += 1
 
-        return None
+            if extended_fingers == 0:
+                return 'rock'
+            elif extended_fingers == 2:
+                if (
+                    index_tip.y < index_pip.y and
+                    middle_tip.y < middle_pip.y and
+                    ring_tip.y > ring_pip.y and
+                    pinky_tip.y > pinky_pip.y
+                ):
+                    return 'scissors'
+            elif extended_fingers >= 3:
+                return 'paper'
+
+            return None
+
+        except Exception as e:
+            print("Gesture classification error:", e)
+            return None
 
     def draw_info(self, frame, gesture, game_state):
         """Draw game information on frame"""
         h, w, c = frame.shape
-
-        # Draw semi-transparent background for text
-        overlay = frame.copy()
 
         # Draw scores at top
         score_text = f"You: {self.player_score} | Computer: {self.computer_score} | Draw: {self.draw_score}"
@@ -105,28 +126,23 @@ class RockPaperScissorsGame:
 
         # Draw current gesture detected
         if gesture and game_state == 'detecting':
-            gesture_emoji = {'rock': 'rock', 'paper': 'paper', 'scissors': 'scissors'}.get(gesture, '?')
+            gesture_emoji = {'rock': '', 'paper': '', 'scissors': ''}.get(gesture, '?')
             cv2.putText(frame, f"Detected: {gesture.upper()} {gesture_emoji}", (20, h - 80), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 200, 255), 2)
-
-            # Draw ready indicator
             cv2.putText(frame, "Press SPACE to throw!", (20, h - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         # Draw countdown
         if game_state == 'countdown':
             elapsed = time.time() - self.countdown_start_time
             remaining = max(0, 3 - int(elapsed))
-            cv2.putText(frame, str(remaining) if remaining > 0 else "GO!", 
-                       (w // 2 - 40, h // 2), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 0, 255), 3)
+            cv2.putText(frame, str(remaining) if remaining > 0 else "GO!", (w // 2 - 40, h // 2), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 0, 255), 3)
 
         # Draw result
         if game_state == 'result':
             elapsed = time.time() - self.result_start_time
 
-            # Draw choices
             choice_text = f"You: {self.player_choice.upper()} vs Computer: {self.computer_choice.upper()}"
             cv2.putText(frame, choice_text, (w // 2 - 350, h // 2 - 100), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
 
-            # Draw result with color
             if self.result == 'win':
                 result_color = (0, 255, 0)
                 result_text = "YOU WIN!"
@@ -203,17 +219,42 @@ class RockPaperScissorsGame:
 
             # Convert to RGB for MediaPipe
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = self.hands.process(frame_rgb)
 
-            # Detect gesture
+            # Detect hand landmarks
             self.detected_gesture = None
-            if results.multi_hand_landmarks:
-                hand_landmarks = results.multi_hand_landmarks[0]
-                self.detected_gesture = self.classify_gesture(hand_landmarks)
+            try:
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+                timestamp_ms = int((time.time() - self.start_time) * 1000)
+                detection_result = self.hand_landmarker.detect_for_video(mp_image, timestamp_ms)
 
-                # Draw hand landmarks
-                self.mp_drawing.draw_landmarks(
-                    frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+                if detection_result.hand_landmarks:
+                    self.detected_gesture = self.classify_gesture(detection_result.hand_landmarks)
+
+                    # Draw hand landmarks
+                    for hand_landmarks in detection_result.hand_landmarks:
+                        # Draw circles on keypoints
+                        for landmark in hand_landmarks:
+                            x = int(landmark.x * w)
+                            y = int(landmark.y * h)
+                            cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)
+
+                        # Draw connections between landmarks
+                        connections = [
+                            (0, 1), (1, 2), (2, 3), (3, 4),
+                            (0, 5), (5, 6), (6, 7), (7, 8),
+                            (0, 9), (9, 10), (10, 11), (11, 12),
+                            (0, 13), (13, 14), (14, 15), (15, 16),
+                            (0, 17), (17, 18), (18, 19), (19, 20),
+                        ]
+
+                        for start, end in connections:
+                            x1 = int(hand_landmarks[start].x * w)
+                            y1 = int(hand_landmarks[start].y * h)
+                            x2 = int(hand_landmarks[end].x * w)
+                            y2 = int(hand_landmarks[end].y * h)
+                            cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            except Exception as e:
+                print("Detection error:", e)
 
             # Update game state based on time
             if self.game_state == 'countdown':
@@ -255,6 +296,8 @@ class RockPaperScissorsGame:
             elif key == ord('r'):
                 self.reset_game()
                 print("Game reset!")
+
+            self.frame_count += 1
 
         self.cap.release()
         cv2.destroyAllWindows()
