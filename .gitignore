@@ -1,24 +1,8 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-venv/
-env/
-
-# PyInstaller
-build/
+Releases/
 dist/
+build/
+venv/
+.venv/
+__pycache__/
+*.pyc
 *.spec
-
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
